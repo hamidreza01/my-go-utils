@@ -2,7 +2,6 @@ package utils
 
 import (
 	"errors"
-	"slices"
 	"time"
 
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -18,7 +17,7 @@ type Session struct {
 }
 
 type Sessions struct {
-	SArray []Session `json:"sessions"`
+	SMap map[string]Session `json:"sessions"`
 }
 
 func (s *Session) UpdateUsingTime() {
@@ -27,29 +26,26 @@ func (s *Session) UpdateUsingTime() {
 
 func (S *Sessions) Clear(t int64) (c int) {
 	now := time.Now().UnixNano()
-	S.SArray = slices.DeleteFunc(S.SArray, func(s Session) bool {
-		if s.LastUse+t < now {
+	for id, session := range S.SMap {
+		if session.LastUse+t < now {
+			delete(S.SMap, id)
 			c++
-			return true
 		}
-		return false
-	})
+	}
 	return c
 }
 
 func (S *Sessions) Find(id string) (*Session, error) {
-	i := slices.IndexFunc(S.SArray, func(s Session) bool {
-		return s.Id == id
-	})
-	if i == -1 {
+	session, ok := S.SMap[id]
+	if !ok {
 		return &Session{}, errors.New("session not found")
 	}
-	return &S.SArray[i], nil
+	return &session, nil
 }
 
 func (S *Sessions) List(userID primitive.ObjectID) []Session {
 	var userSessions []Session
-	for _, session := range S.SArray {
+	for _, session := range S.SMap {
 		if session.User == userID {
 			userSessions = append(userSessions, session)
 		}
@@ -68,9 +64,7 @@ func (S *Sessions) Kill(sessionID string) error {
 		return errors.New("session must be at least one week old")
 	}
 
-	S.SArray = slices.DeleteFunc(S.SArray, func(s Session) bool {
-		return s.User == currentSession.User && s.Id != sessionID
-	})
+	delete(S.SMap, sessionID)
 
 	return nil
 }
